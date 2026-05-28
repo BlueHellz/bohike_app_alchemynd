@@ -1,0 +1,27 @@
+[
+  {
+    "user_text": "I feel anxious and I want to be calm for 5 minutes.",
+    "user_id": "test_user",
+    "client_type": "mobile"
+  },
+  {
+    "user_text": "I'm exhausted and sluggish. Help me feel sharp and energised for 8 minutes.",
+    "user_id": "user2",
+    "client_type": "mobile"
+  },
+  {
+    "user_text": "I've been procrastinating all day. I need laser focus. Use my affirmations: 'I am unstoppable. I finish what I start.' Duration: 6 minutes.",
+    "user_id": "user3",
+    "client_type": "mobile"
+  },
+  {
+    "user_text": "Take me to a tranquil forest in VR to deeply relax for 10 minutes.",
+    "user_id": "user4",
+    "client_type": "vr"
+  },
+  {
+    "user_text": "I want to quit smoking. Put me in a deep, hypnotic state where my subconscious can accept that I am free from cigarettes. Use the words: 'I am completely free from cigarettes. I breathe pure air.' 15 minutes.",
+    "user_id": "user5",
+    "client_type": "mobile"
+  }
+]

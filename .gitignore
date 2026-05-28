@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+venv/
+.venv/
+env/
+.env
+
+# Data
+data/
+*.db
+
+# Audio assets (large files)
+assets/soundscapes/*.wav
+assets/soundscapes/*.mp3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Test results
+report.html
+.reports/
+
+# Docker
+docker-compose.override.yml
