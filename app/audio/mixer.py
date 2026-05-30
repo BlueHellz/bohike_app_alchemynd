@@ -1,80 +1,39 @@
-"""
-Stateful per-session audio mixer.
-Combines binaural beats + soundscape + subliminal -> int16 stereo chunks.
-"""
 import numpy as np
-from app.audio.beat_generator import BeatGenerator, CHUNK_SECS
-from app.audio.soundscape import SoundscapeGenerator
 from app.schemas import SessionBlueprint
+from app.audio.binaural import BinauralGenerator, CHUNK_SAMP, SR
+from app.audio.noise import generate_noise_chunk
 
-BINAURAL_GAIN = 1.0
-SOUNDSCAPE_GAIN = 0.8
-SUBLIMINAL_GAIN = 1.0  # subliminal is pre-attenuated in subliminal.py
-
+GAINS={"binaural":1.0,"noise":0.7,"meditation":0.9,"subliminal":1.0}
 
 class AudioMixer:
-    def __init__(self, bp: SessionBlueprint,
-                 subliminal_loop: np.ndarray | None = None):
-        e = bp.entrainment
-        self.beat_gen = BeatGenerator(
-            initial_hz=e.initial_freq_hz,
-            target_hz=e.target_freq_hz,
-            total_secs=bp.duration_seconds,
-            carrier_hz=bp.audio_scape.binaural_base_freq_hz,
-            iso_intensity=bp.audio_scape.isochronic_intensity,
-            curve=e.transition_curve,
-        )
-        self.soundscape = SoundscapeGenerator(
-            bp.audio_scape.ambient_type,
-            bp.audio_scape.intensity,
-        )
-        self.subliminal_loop = subliminal_loop
-        self._sub_cursor = 0
-        self._t = 0.0
-        self.total_secs = bp.duration_seconds
-        self.sr = 44100
+    def __init__(self,bp,subliminal_loop=None,meditation_loop=None):
+        e=bp.entrainment
+        self.beat=BinauralGenerator(initial_hz=e.initial_hz,target_hz=e.target_hz,
+            total_secs=bp.duration_seconds,carrier_hz=bp.audio.binaural_carrier_hz,
+            iso_intensity=bp.audio.isochronic_intensity,curve=e.curve)
+        self.bp=bp; self.subliminal_loop=subliminal_loop; self.meditation_loop=meditation_loop
+        self._sc=0; self._mc=0; self._t=0.0; self.total=bp.duration_seconds
 
-    def next_chunk(self) -> bytes:
-        N = self.sr  # 1 second of samples
+    def _slice(self,buf,cursor,n):
+        if buf is None: return np.zeros(n,np.float32),cursor
+        end=cursor+n
+        if end<=len(buf): return buf[cursor:end].copy(),end
+        p1=buf[cursor:]; p2=buf[:end-len(buf)]
+        return np.concatenate([p1,p2]),end-len(buf)
 
-        binaural = self.beat_gen.next_chunk(self._t, self.sr)  # (N, 2)
-        noise_m = self.soundscape.next_chunk(N)  # (N,) mono
-
-        # Build stereo noise
-        noise_l = noise_m * SOUNDSCAPE_GAIN
-        noise_r = noise_m * SOUNDSCAPE_GAIN
-
-        # Subliminal slice (mono, centre)
-        if self.subliminal_loop is not None:
-            loop = self.subliminal_loop
-            end = self._sub_cursor + N
-            if end <= len(loop):
-                sub = loop[self._sub_cursor:end]
-                self._sub_cursor = end
-            else:
-                part1 = loop[self._sub_cursor:]
-                part2 = loop[:end - len(loop)]
-                sub = np.concatenate([part1, part2])
-                self._sub_cursor = end - len(loop)
-        else:
-            sub = np.zeros(N, dtype=np.float32)
-
-        left = binaural[:, 0] * BINAURAL_GAIN + noise_l + sub * SUBLIMINAL_GAIN
-        right = binaural[:, 1] * BINAURAL_GAIN + noise_r + sub * SUBLIMINAL_GAIN
-
-        # Apply fade-in (first 2s) and fade-out (last 2s)
-        remaining = self.total_secs - self._t
-        fade = np.ones(N, dtype=np.float32)
-        if self._t < 2.0:
-            ramp_len = min(int(2.0 * self.sr), N)
-            fade[:ramp_len] = np.linspace(0, 1, ramp_len)
-        if remaining < 2.0:
-            ramp_len = min(int(remaining * self.sr), N)
-            fade[-ramp_len:] = np.linspace(1, 0, ramp_len)
-
-        left = np.clip(left * fade, -1.0, 1.0)
-        right = np.clip(right * fade, -1.0, 1.0)
-        stereo = np.stack([left, right], axis=1)
-
-        self._t += CHUNK_SECS
-        return (stereo * 32767).astype(np.int16).tobytes()
+    def next_chunk(self):
+        N=CHUNK_SAMP
+        binn=self.beat.next_chunk(self._t)
+        noise_m=generate_noise_chunk(self.bp.audio.noise_types,self.bp.audio.noise_blend,N)
+        noise_l=noise_m*GAINS["noise"]; noise_r=noise_m*GAINS["noise"]
+        med_m,self._mc=self._slice(self.meditation_loop,self._mc,N)
+        sub_m,self._sc=self._slice(self.subliminal_loop,self._sc,N)
+        fade=np.ones(N,np.float32)
+        if self._t<2.0: ri=min(int(2.0*SR),N); fade[:ri]*=np.linspace(0,1,ri)
+        rem=self.total-self._t
+        if rem<3.0: ri=min(int(rem*SR),N); fade[-ri:]*=np.linspace(1,0,ri) if ri>0 else 1
+        left=(binn[:,0]*GAINS["binaural"]+noise_l+med_m*GAINS["meditation"]+sub_m*GAINS["subliminal"])*fade
+        right=(binn[:,1]*GAINS["binaural"]+noise_r+med_m*GAINS["meditation"]+sub_m*GAINS["subliminal"])*fade
+        left=np.clip(left,-1.0,1.0); right=np.clip(right,-1.0,1.0)
+        self._t+=1.0
+        return (np.stack([left,right],axis=1)*32767).astype(np.int16).tobytes()

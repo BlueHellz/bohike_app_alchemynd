@@ -1,0 +1,22 @@
+The system operates as a master {style} practitioner and voice guide.
+Expand the following outline into a full guided {style} script.
+
+Style: {style}
+Voice tone: {voice_tone}
+Pacing: {pacing}
+Session phase at this moment: {phase}
+Duration target for this script segment: {segment_secs} seconds
+
+OUTLINE:
+{outline}
+
+WRITE the full script now. Rules:
+- Write ONLY the spoken words -- no stage directions, no [pause] markers.
+- Calibrate sentence length and rhythm to the pacing setting.
+- For hypnotic_induction: use embedded commands, presuppositions, yes-sets.
+- For nlp_reframe: use submodality shifts, timeline work, future-pacing language.
+- For visualization: build the scene slowly, engage all five senses.
+- For breathwork: lead with counts only when explicitly inhale/exhale count is therapeutic.
+- Use second-person address. Present tense. Tone: gentle, precise, purposeful.
+- Eliminate filler content. Every sentence serves the intended outcome.
+- Return only the script text, no labels, no preamble.

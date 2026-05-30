@@ -1,58 +1,58 @@
+import os
 from app.schemas import SessionBlueprint
-from typing import Tuple
 
-FREQ_MIN = 0.5
-FREQ_MAX = 40.0
-DURATION_MAX = 10800        # 3 hours
-FLICKER_MAX_HZ = 25.0
-EPILEPSY_FLICKER_CAP = 3.0
+FREQ_MIN = float(os.getenv("MIN_FREQ_HZ", "0.5"))
+FREQ_MAX = float(os.getenv("MAX_FREQ_HZ", "40.0"))
+SESSION_MAX = int(os.getenv("MAX_SESSION_MINUTES", "180")) * 60
 
 
-def validate_blueprint(bp: SessionBlueprint, epilepsy: bool = False) -> Tuple[SessionBlueprint, list]:
-    """
-    Mutates blueprint to enforce safety constraints.
-    Returns (safe_blueprint, list_of_warnings).
-    Never raises -- returns warnings instead so frontend can display them.
-    """
+def validate(bp: SessionBlueprint, epilepsy: bool = False) -> tuple[SessionBlueprint, list[str]]:
     warnings = []
 
-    # 1. Frequency clamp
-    e = bp.entrainment
-    if not (FREQ_MIN <= e.initial_freq_hz <= FREQ_MAX):
-        e.initial_freq_hz = max(FREQ_MIN, min(e.initial_freq_hz, FREQ_MAX))
-        warnings.append(f"initial_freq_hz clamped to {e.initial_freq_hz}")
-    if not (FREQ_MIN <= e.target_freq_hz <= FREQ_MAX):
-        e.target_freq_hz = max(FREQ_MIN, min(e.target_freq_hz, FREQ_MAX))
-        warnings.append(f"target_freq_hz clamped to {e.target_freq_hz}")
+    bp.entrainment.initial_hz = _clamp(bp.entrainment.initial_hz, FREQ_MIN, FREQ_MAX, "initial_hz", warnings)
+    bp.entrainment.target_hz = _clamp(bp.entrainment.target_hz, FREQ_MIN, FREQ_MAX, "target_hz", warnings)
+    if bp.duration_seconds > SESSION_MAX:
+        bp.duration_seconds = SESSION_MAX
+        warnings.append(f"Duration capped at {SESSION_MAX // 60} minutes.")
 
-    # 2. Duration cap
-    if bp.duration_seconds > DURATION_MAX:
-        bp.duration_seconds = DURATION_MAX
-        warnings.append("Duration capped at 3 hours.")
-
-    # 3. Epilepsy overrides
     if epilepsy:
         bp.mobile_visual.pulse_sync = False
         bp.mobile_visual.pulse_shape = "none"
         if bp.vr_visual:
-            # Force all VR elements to max 3 Hz smooth gradient
             for el in bp.vr_visual.dynamic_elements:
-                el.sync_to = "slow_breath"   # frontend interprets as <=3 Hz
+                el.sync_to = "slow_breath"
             bp.vr_visual.global_light_rhythm = False
-        warnings.append("Epilepsy mode: all rhythmic flicker disabled.")
+        warnings.append("Epilepsy mode: all flicker disabled.")
+
+    if bp.subliminal.enabled and not bp.subliminal.messages:
+        bp.subliminal.enabled = False
+        warnings.append("Subliminal disabled: no user-provided messages.")
+
+    noise_sum = sum(bp.audio.noise_blend)
+    if abs(noise_sum - 1.0) > 0.01:
+        bp.audio.noise_blend = [w / noise_sum for w in bp.audio.noise_blend]
+        warnings.append("Noise blend weights normalised to sum 1.0.")
 
     return bp, warnings
 
 
 def safety_summary(bp: SessionBlueprint) -> str:
-    """Human-readable disclosure string shown to user before session start."""
     lines = [
         f"Duration: {bp.duration_seconds // 60} min {bp.duration_seconds % 60} sec",
-        f"Soundscape: {bp.audio_scape.ambient_type}",
-        f"Brainwave transition: {bp.entrainment.initial_freq_hz} Hz -> {bp.entrainment.target_freq_hz} Hz",
+        f"Goal: {bp.intent_summary}",
+        f"Entrainment: {bp.entrainment.initial_hz} Hz -> {bp.entrainment.target_hz} Hz",
+        f"Active modalities: {', '.join(bp.active_modalities)}",
     ]
     if bp.subliminal.enabled:
-        lines.append("Subliminal messages: " + " | ".join(f'"{m}"' for m in bp.subliminal.messages))
+        lines.append("Subliminal: " + " | ".join(f'"{m}"' for m in bp.subliminal.messages))
     else:
-        lines.append("Subliminal messages: none")
+        lines.append("Subliminal: none")
     return "\n".join(lines)
+
+
+def _clamp(val, lo, hi, name, warnings):
+    if not (lo <= val <= hi):
+        clamped = max(lo, min(val, hi))
+        warnings.append(f"{name} clamped from {val} to {clamped}")
+        return clamped
+    return val
